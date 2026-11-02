@@ -1,0 +1,69 @@
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: my_postgres
+    restart: unless-stopped
+
+    env_file:
+      - ./database/.env
+
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/create_table.sql:/docker-entrypoint-initdb.d/01-create-tables.sql:ro
+
+    networks:
+      - mynetwork
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    image: my-webapp:fctp-dev
+    container_name: my-python-container
+    restart: unless-stopped
+
+    env_file:
+      - ./backend/.env
+
+    ports:
+      - "5000:5000"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - mynetwork
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+
+    image: frontend:dev
+    container_name: my-frontend-container
+    restart: unless-stopped
+
+    ports:
+      - "3000:80"
+
+    depends_on:
+      - backend
+
+    networks:
+      - mynetwork
+
+volumes:
+  pgdata:
+
+networks:
+  mynetwork:
+    driver: bridge
