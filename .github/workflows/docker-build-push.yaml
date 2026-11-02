@@ -1,4 +1,4 @@
-name: Build and Push Three Docker Images
+name: Build and Push Three Docker Images to AWS ECR
 
 on:
   push:
@@ -7,31 +7,46 @@ on:
 
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY_BACKEND: my-devops-webapp-backend
+  ECR_REPOSITORY_FRONTEND: my-devops-webapp-frontend
+  ECR_REPOSITORY_DATABASE: my-devops-webapp-database
+
 jobs:
   publish_images:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       # Step 1: Checkout source code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Step 2: Setup Docker Buildx
+      # Step 2: Configure AWS Credentials
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Step 3: Login to Amazon ECR
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Step 4: Setup Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Step 3: Login to Docker Hub
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
-
-      # Step 4: Define image tag using Git commit ID
+      # Step 5: Generate Image Tag using Git Commit ID
       - name: Generate Image Tag
         run: echo "IMAGE_TAG=dev-${GITHUB_SHA}" >> $GITHUB_ENV
 
-      # Step 5: Build and Push Backend Image
+      # Step 6: Build and Push Backend Image
       - name: Build and Push Backend
         uses: docker/build-push-action@v6
         with:
@@ -39,9 +54,9 @@ jobs:
           file: ./backend/Dockerfile
           push: true
           tags: |
-            ${{ secrets.DOCKER_HUB_USERNAME }}/my-webapp-backend:${{ env.IMAGE_TAG }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_BACKEND }}:${{ env.IMAGE_TAG }}
 
-      # Step 6: Build and Push Frontend Image
+      # Step 7: Build and Push Frontend Image
       - name: Build and Push Frontend
         uses: docker/build-push-action@v6
         with:
@@ -49,9 +64,9 @@ jobs:
           file: ./frontend/Dockerfile
           push: true
           tags: |
-            ${{ secrets.DOCKER_HUB_USERNAME }}/my-webapp-frontend:${{ env.IMAGE_TAG }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_FRONTEND }}:${{ env.IMAGE_TAG }}
 
-      # Step 7: Build and Push Database Image
+      # Step 8: Build and Push Database Image
       - name: Build and Push Database
         uses: docker/build-push-action@v6
         with:
@@ -59,12 +74,12 @@ jobs:
           file: ./database/Dockerfile
           push: true
           tags: |
-            ${{ secrets.DOCKER_HUB_USERNAME }}/my-webapp-database:${{ env.IMAGE_TAG }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_DATABASE }}:${{ env.IMAGE_TAG }}
 
-      # Step 8: Display published image names
+      # Step 9: Display Published Image Names
       - name: Display Published Images
         run: |
-          echo "Successfully published Docker images:"
-          echo "${{ secrets.DOCKER_HUB_USERNAME }}/my-webapp-backend:${IMAGE_TAG}"
-          echo "${{ secrets.DOCKER_HUB_USERNAME }}/my-webapp-frontend:${IMAGE_TAG}"
-          echo "${{ secrets.DOCKER_HUB_USERNAME }}/my-webapp-database:${IMAGE_TAG}"
+          echo "Successfully published Docker images to AWS ECR:"
+          echo "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_BACKEND }}:${{ env.IMAGE_TAG }}"
+          echo "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_FRONTEND }}:${{ env.IMAGE_TAG }}"
+          echo "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_DATABASE }}:${{ env.IMAGE_TAG }}"
